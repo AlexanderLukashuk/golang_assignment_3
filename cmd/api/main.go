@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	// undescore (alias) is used to avoid go compiler complaining or erasing this
@@ -50,6 +51,7 @@ type application struct {
 	logger *log.Logger
 	models data.Models // hold new models in app
 	mailer mailer.Mailer
+	wg     sync.WaitGroup
 }
 
 func main() {
