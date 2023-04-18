@@ -26,7 +26,8 @@ func (app *application) routes() *httprouter.Router {
 	router.HandlerFunc(http.MethodGet, "/v1/directors/:direc_name", app.searchByName)
 
 	router.HandlerFunc(http.MethodPost, "/v1/users", app.registerUserHandler)
-	router.HandlerFunc(http.MethodPut, "/v1/users/activated", app.activateUserHandler)
+	router.HandlerFunc(http.MethodPost, "/v1/roles", app.createRoleHandler)
+	// router.HandlerFunc(http.MethodPut, "/v1/users/activated", app.activateUserHandler)
 	// Return the httprouter instance.
 	return router
 }

@@ -22,7 +22,10 @@ const version = "1.0.0"
 
 // Add a db struct field to hold the configuration settings for our database connection
 // pool. For now this only holds the DSN, which we will read in from a command-line flag.
-type config struct {
+type ConfTest struct {
+	Port int
+}
+type Config struct {
 	port int
 	env  string
 	db   struct {
@@ -47,7 +50,7 @@ type config struct {
 }
 
 type application struct {
-	config config
+	config Config
 	logger *log.Logger
 	models data.Models // hold new models in app
 	mailer mailer.Mailer
@@ -55,14 +58,14 @@ type application struct {
 }
 
 func main() {
-	var cfg config
-	flag.IntVar(&cfg.port, "port", 4000, "API server port")
+	var cfg Config
+	flag.IntVar(&cfg.port, "port", 9000, "API server port")
 	flag.StringVar(&cfg.env, "env", "development", "Environment (development|staging|production)")
 
 	// Read the DSN value from the db-dsn command-line flag into the config struct. We
 	// default to using our development DSN if no flag is provided.
 	// in powershell use next command: $env:DSN="postgres://postgres:postgres@localhost:5432/greenlight?sslmode=disable"
-	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("DSN"), "PostgreSQL DSN")
+	flag.StringVar(&cfg.db.dsn, "db-dsn", "postgres://postgres:postgres@localhost:5432/aitu_golang?sslmode=disable", "PostgreSQL DSN")
 
 	// Setting restrictions on db connections
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "PostgreSQL max open connections")
@@ -83,7 +86,7 @@ func main() {
 	flag.Parse()
 	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 
-	db, err := openDB(cfg)
+	db, err := OpenDB(cfg)
 	if err != nil {
 		logger.Fatalf("Connection failed. Error is: %s", err)
 	}
@@ -112,7 +115,7 @@ func main() {
 	logger.Fatal(err)
 }
 
-func openDB(cfg config) (*sql.DB, error) {
+func OpenDB(cfg Config) (*sql.DB, error) {
 	db, err := sql.Open("postgres", cfg.db.dsn)
 	if err != nil {
 		return nil, err

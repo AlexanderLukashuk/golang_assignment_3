@@ -76,26 +76,43 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 
 // method for updating a specific record in the movies table.
 func (m MovieModel) Update(movie *Movie) error {
+	// query := `
+	// 	UPDATE movies
+	// 	SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
+	// 	WHERE id = $5 AND version = $6
+	// 	RETURNING version`
+
 	query := `
 		UPDATE movies
-		SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
-		WHERE id = $5 AND version = $6
+		SET title = TestMovie, version = version + 1
+		WHERE title = $1
 		RETURNING version`
 
-	args := []interface{}{
-		movie.Title,
-		movie.Year,
-		movie.Runtime,
-		pq.Array(movie.Genres),
-		movie.ID,
-		movie.Version,
-	}
+	// args := []interface{}{
+	// 	movie.Title,
+	// 	movie.Year,
+	// 	movie.Runtime,
+	// 	pq.Array(movie.Genres),
+	// 	movie.Title,
+	// 	// movie.Version,
+	// }
 
-	err := m.DB.QueryRow(query, args...).Scan(&movie.Version)
+	// err := m.DB.QueryRow(query, args...).Scan(&movie.Version)
+	// if err != nil {
+	// 	switch {
+	// 	case errors.Is(err, sql.ErrNoRows):
+	// 		return ErrEditConflict
+	// 	default:
+	// 		return err
+	// 	}
+	// }
+
+	err := m.DB.QueryRow(query, movie.Title).Scan(&movie.Version)
+
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return ErrEditConflict
+			return ErrRecordNotFound
 		default:
 			return err
 		}
@@ -177,4 +194,106 @@ func (m MovieModel) GetAll(title string, genres []string, filters Filters) ([]*M
 	}
 
 	return movies, nil
+}
+
+func (m MovieModel) GetAllMovies() ([]*Movie, error) {
+	query := `SELECT * FROM movies`
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// args := []any{title, pq.Array(genres), filters.limit(), filters.offset()}
+
+	rows, err := m.DB.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	movies := []*Movie{}
+
+	for rows.Next() {
+		var movie Movie
+		err := rows.Scan(
+			&movie.ID,
+			&movie.CreatedAt,
+			&movie.Title,
+			&movie.Year,
+			&movie.Runtime,
+			pq.Array(&movie.Genres),
+			&movie.Version,
+		)
+		if err != nil {
+			return nil, err
+		}
+		movies = append(movies, &movie)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return movies, nil
+}
+
+func (m MovieModel) GetByTitle(title string) (*Movie, error) {
+	// if id < 1 {
+	// 	return nil, ErrRecordNotFound
+	// }
+
+	query := `
+		SELECT *
+		FROM movies
+		WHERE title = $1`
+
+	var movie Movie
+
+	err := m.DB.QueryRow(query, title).Scan(
+		&movie.ID,
+		&movie.CreatedAt,
+		&movie.Title,
+		&movie.Year,
+		&movie.Runtime,
+		pq.Array(&movie.Genres),
+		&movie.Version,
+	)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &movie, nil
+
+}
+
+func (m MovieModel) DeleteByTitle(title string) error {
+	// if id < 1 {
+	// 	return ErrRecordNotFound
+	// }
+	// Construct the SQL query to delete the record.
+	query := `
+		DELETE FROM movies
+		WHERE title = $1`
+
+	result, err := m.DB.Exec(query, title)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
+	return nil
 }

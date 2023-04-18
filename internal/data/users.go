@@ -34,6 +34,16 @@ type password struct {
 	hash      []byte
 }
 
+type Role struct {
+	ID       int64  `json:"id"`
+	RoleName string `json:"role_name"`
+	UserID   int64  `json:"user_id"`
+}
+
+type RoleModel struct {
+	DB *sql.DB
+}
+
 func (m UserModel) Insert(user *User) error {
 	query := `
 		INSERT INTO users (name, email, password_hash, activated)
@@ -212,4 +222,60 @@ func (m UserModel) GetForToken(tokenScope, tokenPlaintext string) (*User, error)
 	}
 
 	return &user, nil
+}
+
+// func (m UserModel) insertUserRole(user *User) error {
+// 	query := `
+// 		INSERT INTO roles (role_name, )
+// 		VALUES ($1, $2, $3, $4)
+// 		RETURNING id, created_at, version
+
+// 		WITH users (name, email, password_hash, activated) AS (VALUES
+//     	('more testing', 'blue'), ('yet another row', 'green'))
+// 		INSERT INTO bar (description, foo_id)
+// 			SELECT ins.description, foo.id FROM foo
+// 			JOIN ins ON ins.type = foo.type;`
+
+// 	args := []any{user.Name, user.Email, user.Password.hash, user.Activated}
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+// 	defer cancel()
+
+// 	err := m.DB.QueryRowContext(ctx, query, args...).Scan(&user.ID, &user.CreatedAt, &user.Version)
+// 	if err != nil {
+// 		switch {
+// 		case err.Error() == `pq: duplicate key value violates unique constraint "users_email_key"`:
+// 			return ErrDuplicateEmail
+// 		default:
+// 			return err
+// 		}
+// 	}
+
+// 	return nil
+// }
+
+func (m RoleModel) InsertUserRole(role *Role) error {
+	// tokenHash := sha256.Sum256([]byte(tokenPlaintext))
+	query := `
+		INSERT INTO roles (role_name, user_id)
+		VALUES ($1, $2)
+		RETURNING id`
+
+	// args := []any{tokenHash[:], tokenScope, time.Now()}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, &role.RoleName,
+		&role.UserID).Scan(
+		&role.ID)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrRecordNotFound
+		default:
+			return err
+		}
+	}
+
+	return nil
 }

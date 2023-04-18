@@ -19,6 +19,7 @@ type Models struct {
 	Directors DirectorModel
 	User      UserModel
 	Token     TokenModel
+	Role      RoleModel
 }
 
 // method which returns a Models struct containing the initialized MovieModel.
@@ -28,5 +29,6 @@ func NewModels(db *sql.DB) Models {
 		Directors: DirectorModel{DB: db},
 		User:      UserModel{DB: db},
 		Token:     TokenModel{DB: db},
+		Role:      RoleModel{DB: db},
 	}
 }
