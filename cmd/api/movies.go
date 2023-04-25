@@ -202,7 +202,14 @@ func (app *application) listMoviesHandler(w http.ResponseWriter, r *http.Request
 	input.Filters.PageSize = app.readInt(qs, "page_size", 20)
 
 	// input.Sort = app.readString(qs, "sort", "id")
-	input.Filters.Sort = app.readString(qs, "sort", "id")
+	// input.Filters.Sort = app.readString(qs, "sort", "id")
+	// sortParam := app.readString(qs, "sort", "id")
+	// switch sortParam {
+	// case "title", "year", "runtime":
+	// 	input.Filters.Sort = sortParam
+	// default:
+	// 	input.Filters.Sort = "id"
+	// }
 
 	// fmt.Fprintf(w, "%+v\n", input)
 
