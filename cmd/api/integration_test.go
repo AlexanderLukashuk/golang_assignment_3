@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/shynggys9219/greenlight/internal/data"
 	"github.com/shynggys9219/greenlight/internal/mailer"
+	"github.com/stretchr/testify/require"
 )
 
 func makeRequest(method, url string, requestBody interface{}, headers http.Header) (*httptest.ResponseRecorder, error) {
@@ -247,5 +250,147 @@ func TestShowMovieHandler(t *testing.T) {
 
 	if !reflect.DeepEqual(envelope.Movie.Genres, movie.Genres) {
 		t.Errorf("expected movie genres %v, but got %v", movie.Genres, envelope.Movie.Genres)
+	}
+}
+
+func TestServe(t *testing.T) {
+	// cfg := getConfig()
+	// app := newApplication(cfg)
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+
+	db, err := OpenDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	app := &application{
+		config: cfg,
+		logger: logger,
+		models: data.NewModels(db),
+		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password, cfg.smtp.sender),
+	}
+
+	server := httptest.NewServer(app.routes())
+	defer server.Close()
+
+	// Create a GET request to the health check endpoint
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/healthcheck", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("expected status %d; got %d", http.StatusOK, res.StatusCode)
+	}
+}
+
+func TestMethodNotAllowedResponse(t *testing.T) {
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+
+	app := &application{
+		logger: logger,
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		app.methodNotAllowedResponse(w, r)
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("expected status %d; got %d", http.StatusMethodNotAllowed, res.StatusCode)
+	}
+
+	expectedMessage := "{\"error\":\"the GET method is not supported for this resource\"}\n"
+	actualMessage, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(actualMessage) != expectedMessage {
+		t.Errorf("expected message %q; got %q", expectedMessage, string(actualMessage))
+	}
+}
+
+func TestApplication_editConflictResponse(t *testing.T) {
+	logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
+
+	db, err := OpenDB(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	app := &application{
+		config: cfg,
+		logger: logger,
+		models: data.NewModels(db),
+		mailer: mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password, cfg.smtp.sender),
+	}
+
+	server := httptest.NewServer(app.routes())
+	defer server.Close()
+
+	movie := &data.Movie{
+		Title:   "Test Movie",
+		Year:    2022,
+		Runtime: 90,
+		Genres:  []string{"Action", "Adventure"},
+	}
+	err = app.models.Movies.Insert(movie)
+	require.NoError(t, err)
+
+	// Simulate another user updating the movie
+	movie.Version++
+	err = app.models.Movies.Update(movie)
+	require.NoError(t, err)
+
+	// Attempt to update the movie again and expect an edit conflict response
+	reqBody := `{"title": "New Title", "year": 2023, "runtime": 100, "genres": ["Action", "Drama"]}`
+	req := httptest.NewRequest(http.MethodPut, "/v1/movies/1", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	// app.srv.Handler.ServeHTTP(rr, req)
+	server.Client().Do(req)
+
+	// Expect a 409 Conflict response with the expected error message
+	expectedResponse := envelope{"error": "unable to update the record due to an edit conflict, please try again"}
+	assertResponse(t, rr, http.StatusConflict, expectedResponse)
+}
+
+func assertResponse(t *testing.T, rr *httptest.ResponseRecorder, wantStatus int, wantBody interface{}) {
+	t.Helper()
+
+	if rr.Code != wantStatus {
+		t.Errorf("want status %d; got %d", wantStatus, rr.Code)
+	}
+
+	if wantBody != nil {
+		var gotBody map[string]interface{}
+		err := json.NewDecoder(rr.Body).Decode(&gotBody)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(gotBody, wantBody) {
+			t.Errorf("want body %#v; got %#v", wantBody, gotBody)
+		}
 	}
 }
